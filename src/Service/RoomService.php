@@ -29,14 +29,19 @@ class RoomService
         return $room;
     }
 
-    public function updateRoom(Room $room, string $name, int $rows, int $seatsPerRow): Room
+    public function updateRoom(Room $room, string $name, int | null $rows, int | null $seatsPerRow): Room
     {
         $room->setName($name);
         
         // Jeśli zmieniono wymiary sali, usuń stoliki i stwórz nowe
         if ($room->getRows() !== $rows || $room->getSeatsPerRow() !== $seatsPerRow) {
-            $room->setRows($rows);
-            $room->setSeatsPerRow($seatsPerRow);
+            if($rows !== null) {
+                $room->setRows($rows);
+            }           
+
+            if($seatsPerRow !== null) {
+                $room->setSeatsPerRow($seatsPerRow);
+            }
             
             // Usuwanie stolików
             $oldSeats = $room->getSeats()->toArray();

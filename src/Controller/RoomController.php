@@ -9,13 +9,17 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-
+use Symfony\Component\Serializer\SerializerInterface;
+use App\DTO\CreateRoomRequest;
+use App\DTO\RoomResponse;
+use App\DTO\UpdateRoomRequest;
 #[Route('/api/rooms')]
 class RoomController extends AbstractController
 {
     public function __construct(
         private RoomService $roomService,
-        private ValidatorInterface $validator
+        private ValidatorInterface $validator,
+        private SerializerInterface $serializer
     ) {
     }
 
@@ -25,22 +29,22 @@ class RoomController extends AbstractController
         $rooms = $this->roomService->getAllRooms();
         
         $data = array_map(function ($room) {
-            return [
-                'id' => $room->getId(),
-                'name' => $room->getName(),
-                'rows' => $room->getRows(),
-                'seatsPerRow' => $room->getSeatsPerRow(),
-                'totalSeats' => $room->getTotalSeats(),
-                'availableSeats' => $this->roomService->calculateAvailableSeats($room),
-                'seats' => array_map(function ($seat) {
+            return new \App\DTO\RoomResponse(
+                $room->getId(),
+                $room->getName(),
+                $room->getRows(),
+                $room->getSeatsPerRow(),
+                $room->getTotalSeats(),
+                $this->roomService->calculateAvailableSeats($room),
+                array_map(function ($seat) {
                     return [
                         'id' => $seat->getId(),
                         'row' => $seat->getRowNumber(),
                         'number' => $seat->getSeatNumber(),
                         'isReserved' => $seat->isReserved(),
                     ];
-                }, $room->getSeats()->toArray()),
-            ];
+                }, $room->getSeats()->toArray())
+            );
         }, $rooms);
 
         return $this->json($data);
@@ -49,26 +53,40 @@ class RoomController extends AbstractController
     #[Route('', name: 'create_room', methods: ['POST'])]
     public function createRoom(Request $request): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
-
-        if (!isset($data['name']) || !isset($data['rows']) || !isset($data['seatsPerRow'])) {
-            return $this->json(['error' => 'Missing required fields'], Response::HTTP_BAD_REQUEST);
+        try {
+            $roomRequest = $this->serializer->deserialize($request->getContent(), CreateRoomRequest::class, 'json');
+            $errors = $this->validator->validate($roomRequest);
+            if (count($errors) > 0) {
+                return $this->json(['errors' => (string) $errors], Response::HTTP_BAD_REQUEST);
+            }
+        } catch (\Exception $e) {
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_BAD_REQUEST);
         }
 
         try {
             $room = $this->roomService->createRoom(
-                $data['name'],
-                (int) $data['rows'],
-                (int) $data['seatsPerRow']
+                $roomRequest->name,
+                (int) $roomRequest->rows,
+                (int) $roomRequest->seatsPerRow
             );
 
-            return $this->json([
-                'id' => $room->getId(),
-                'name' => $room->getName(),
-                'rows' => $room->getRows(),
-                'seatsPerRow' => $room->getSeatsPerRow(),
-                'totalSeats' => $room->getTotalSeats(),
-            ], Response::HTTP_CREATED);
+            $responseDto = new \App\DTO\RoomResponse(
+                $room->getId(),
+                $room->getName(),
+                $room->getRows(),
+                $room->getSeatsPerRow(),
+                $room->getTotalSeats(),
+                $this->roomService->calculateAvailableSeats($room),
+                array_map(function ($seat) {
+                    return [
+                        'id' => $seat->getId(),
+                        'row' => $seat->getRowNumber(),
+                        'number' => $seat->getSeatNumber(),
+                        'isReserved' => $seat->isReserved(),
+                    ];
+                }, $room->getSeats()->toArray())
+            );
+            return $this->json($responseDto, Response::HTTP_CREATED);
         } catch (\Exception $e) {
             return $this->json(['error' => $e->getMessage()], Response::HTTP_BAD_REQUEST);
         }
@@ -77,33 +95,50 @@ class RoomController extends AbstractController
     #[Route('/{id}', name: 'update_room', methods: ['PUT'])]
     public function updateRoom(int $id, Request $request): JsonResponse
     {
-        $room = $this->roomService->getRoomById($id);
+        try {
+            $room = $this->roomService->getRoomById($id);
 
-        if (!$room) {
-            return $this->json(['error' => 'Room not found'], Response::HTTP_NOT_FOUND);
+            if (!$room) {
+                return $this->json(['error' => 'Room not found'], Response::HTTP_NOT_FOUND);
+            }
+        } catch (\Exception $e) {
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_BAD_REQUEST);
         }
-
-        $data = json_decode($request->getContent(), true);
-
-        if (!isset($data['name']) || !isset($data['rows']) || !isset($data['seatsPerRow'])) {
-            return $this->json(['error' => 'Missing required fields'], Response::HTTP_BAD_REQUEST);
+        try {
+            $roomRequest = $this->serializer->deserialize($request->getContent(), UpdateRoomRequest::class, 'json');
+            $errors = $this->validator->validate($roomRequest);
+            if (count($errors) > 0) {
+                return $this->json(['errors' => (string) $errors], Response::HTTP_BAD_REQUEST);
+            }
+        } catch (\Exception $e) {
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_BAD_REQUEST);
         }
 
         try {
             $room = $this->roomService->updateRoom(
                 $room,
-                $data['name'],
-                (int) $data['rows'],
-                (int) $data['seatsPerRow']
+                $roomRequest->name,
+                isset($roomRequest->rows) ? (int) $roomRequest->rows : null,
+                isset($roomRequest->seatsPerRow) ? (int) $roomRequest->seatsPerRow : null
             );
-
-            return $this->json([
-                'id' => $room->getId(),
-                'name' => $room->getName(),
-                'rows' => $room->getRows(),
-                'seatsPerRow' => $room->getSeatsPerRow(),
-                'totalSeats' => $room->getTotalSeats(),
-            ]);
+            
+            $responseDto = new \App\DTO\RoomResponse(
+                $room->getId(),
+                $room->getName(),
+                $room->getRows(),
+                $room->getSeatsPerRow(),
+                $room->getTotalSeats(),
+                $this->roomService->calculateAvailableSeats($room),
+                array_map(function ($seat) {
+                    return [
+                        'id' => $seat->getId(),
+                        'row' => $seat->getRowNumber(),
+                        'number' => $seat->getSeatNumber(),
+                        'isReserved' => $seat->isReserved(),
+                    ];
+                }, $room->getSeats()->toArray())
+            );
+            return $this->json($responseDto);
         } catch (\Exception $e) {
             return $this->json(['error' => $e->getMessage()], Response::HTTP_BAD_REQUEST);
         }
@@ -112,10 +147,14 @@ class RoomController extends AbstractController
     #[Route('/{id}', name: 'delete_room', methods: ['DELETE'])]
     public function deleteRoom(int $id): JsonResponse
     {
-        $room = $this->roomService->getRoomById($id);
+        try {
+            $room = $this->roomService->getRoomById($id);
 
-        if (!$room) {
-            return $this->json(['error' => 'Room not found'], Response::HTTP_NOT_FOUND);
+            if (!$room) {
+                return $this->json(['error' => 'Room not found'], Response::HTTP_NOT_FOUND);
+            }
+        } catch (\Exception $e) {
+            return $this->json(['error' => $e->getMessage()], Response::HTTP_BAD_REQUEST);
         }
 
         try {

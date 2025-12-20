@@ -27,7 +27,7 @@ final class Version20231217000000 extends AbstractMigration
 
         $this->addSql('CREATE TABLE rooms (
             id INT AUTO_INCREMENT NOT NULL,
-            name VARCHAR(100) NOT NULL,
+            name VARCHAR(100) UNIQUE NOT NULL,
             `rows` INT NOT NULL,
             seats_per_row INT NOT NULL,
             PRIMARY KEY(id)
