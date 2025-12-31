@@ -20,6 +20,7 @@ class Room
     #[ORM\Column(type: 'string', length: 100)]
     #[Assert\NotBlank]
     #[Assert\Length(min: 1, max: 100)]
+    #[Assert\Unique]
     private string $name;
 
     #[ORM\Column(type: 'integer', name: '`rows`')]

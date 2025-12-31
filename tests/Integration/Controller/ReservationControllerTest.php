@@ -185,6 +185,6 @@ class ReservationControllerTest extends WebTestCase
         $this->assertResponseStatusCodeSame(Response::HTTP_BAD_REQUEST);
         
         $content = json_decode($this->client->getResponse()->getContent(), true);
-        $this->assertArrayHasKey('error', $content);
+        $this->assertArrayHasKey('errors', $content);
     }
 }
